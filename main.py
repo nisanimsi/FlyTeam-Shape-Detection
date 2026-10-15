@@ -1,7 +1,7 @@
 # FlyTeam - Real-Time Shape Detection
 # Camera capture, position calculation and visualization
 import cv2
-from image_processing import create_color_masks
+from image_processing import create_color_masks, detect_targets
 
 def calculate_offset(target_center, camera_center):
     target_x, target_y = target_center
@@ -55,14 +55,14 @@ def main():
             break
 
         masks = create_color_masks(frame)
+        targets = detect_targets(masks)
 
         h, w = frame.shape[:2]
         camera_center = (w // 2, h // 2)
 
-        # TODO: etiket ve merkez, kontur fonksiyonundan gelecek
-        target_center = None
-        if target_center is not None:
-            draw_target_info(frame, "KIRMIZI UCGEN", target_center, camera_center)
+        if targets:
+            best = max(targets, key=lambda t: t["area"])
+            draw_target_info(frame, best["name"], best["center"], camera_center)
 
         cv2.imshow("FlyTeam", frame)
 
