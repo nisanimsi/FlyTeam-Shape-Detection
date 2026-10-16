@@ -1,36 +1,42 @@
-
-# FlyTeam - Image Processing
-# Contour detection, shape classification and centroid calculation
+# Color detection, contour filtering and shape classification
 
 import cv2
 import numpy as np
 
+BLUE_LOWER = np.array([90, 170, 110])
+BLUE_UPPER = np.array([130, 255, 255])
+
+RED_LOWER_1 = np.array([0, 100, 100])
+RED_UPPER_1 = np.array([10, 255, 255])
+
+RED_LOWER_2 = np.array([170, 100, 100])
+RED_UPPER_2 = np.array([179, 255, 255])
+
 MIN_AREA = 400
 
 
+def create_color_masks(frame):
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    mask_blue = cv2.inRange(hsv, BLUE_LOWER, BLUE_UPPER)
+
+    mask_red1 = cv2.inRange(hsv, RED_LOWER_1, RED_UPPER_1)
+    mask_red2 = cv2.inRange(hsv, RED_LOWER_2, RED_UPPER_2)
+    mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+
+    return {"red": mask_red, "blue": mask_blue}
+
+
 def find_contours(mask):
-    """
-    Renk maskesindeki konturlari bulur.
-    Belirlenen alan esiginin altindaki konturlari eler.
-    """
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    valid_contours = []
-
-    for contour in contours:
-        area = cv2.contourArea(contour)
-
-        if area >= MIN_AREA:
-            valid_contours.append(contour)
-
-    return valid_contours
+    return [c for c in contours if cv2.contourArea(c) >= MIN_AREA]
 
 
 def classify_shape(contour):
-    """
-    Konturun kose sayisini ve kenar uzunluklarini inceleyerek
-    eskenar ucgen veya duzgun altigen olup olmadigini belirler.
-    """
     perimeter = cv2.arcLength(contour, True)
 
     if perimeter <= 0:
@@ -52,9 +58,7 @@ def classify_shape(contour):
     for i in range(corner_count):
         p1 = points[i]
         p2 = points[(i + 1) % corner_count]
-
-        length = np.linalg.norm(p1 - p2)
-        edges.append(length)
+        edges.append(np.linalg.norm(p1 - p2))
 
     shortest = min(edges)
     longest = max(edges)
@@ -62,19 +66,17 @@ def classify_shape(contour):
     if shortest <= 0:
         return None
 
-    edge_ratio = longest / shortest
+    ratio = longest / shortest
 
-    if corner_count == 3 and edge_ratio <= 1.35:
+    if corner_count == 3 and ratio <= 1.35:
         return "triangle"
-
-    if corner_count == 6 and edge_ratio <= 1.45:
+    elif corner_count == 6 and ratio <= 1.45:
         return "hexagon"
-
-    return None
+    else:
+        return None
 
 
 def calculate_centroid(contour):
-    """Konturun merkez koordinatlarini cv2.moments ile hesaplar."""
     moments = cv2.moments(contour)
 
     if moments["m00"] == 0:
@@ -87,10 +89,6 @@ def calculate_centroid(contour):
 
 
 def detect_targets(masks):
-    """
-    Kirmizi ucgen ve mavi altigen hedeflerini tespit eder.
-    Hedefin adini, merkezini, konturunu ve alanini dondurur.
-    """
     targets = []
 
     target_configs = [
